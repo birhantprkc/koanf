@@ -1307,6 +1307,90 @@ func TestSlices(t *testing.T) {
 	}
 }
 
+func TestSlicesNativeMapSlice(t *testing.T) {
+	assert := assert.New(t)
+
+	// A natively-typed []map[string]any (as produced by the confmap and
+	// structs providers, and named in Slices' own doc) must be handled too,
+	// not just a []any of maps decoded by a parser. It was silently dropped.
+	k := koanf.New(delim)
+	require.NoError(t, k.Load(confmap.Provider(map[string]any{
+		"servers": []map[string]any{
+			{"host": "a", "port": 1},
+			{"host": "b", "port": 2},
+		},
+	}, "."), nil))
+
+	slices := k.Slices("servers")
+	require.Len(t, slices, 2, "Slices dropped a []map[string]any value")
+	assert.Equal("a", slices[0].String("host"))
+	assert.Equal(1, slices[0].Int("port"))
+	assert.Equal("b", slices[1].String("host"))
+	assert.Equal(2, slices[1].Int("port"))
+}
+
+func TestSlicesEdgeCases(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		value any
+		want  []map[string]any
+	}{
+		{"nil_native_slice", []map[string]any(nil), []map[string]any{}},
+		{"empty_native_slice", []map[string]any{}, []map[string]any{}},
+		{"nil_interface_slice", []any(nil), []map[string]any{}},
+		{"empty_interface_slice", []any{}, []map[string]any{}},
+		{"nil_and_empty_native_maps", []map[string]any{nil, {}}, []map[string]any{{}, {}}},
+		{"nil_and_empty_interface_maps", []any{map[string]any(nil), map[string]any{}}, []map[string]any{{}, {}}},
+		{
+			"mixed_interface_slice",
+			[]any{nil, 42, map[string]any{"host": "a"}, "invalid", map[string]any{"host": "b"}},
+			[]map[string]any{{"host": "a"}, {"host": "b"}},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			k := koanf.New(delim)
+			require.NoError(t, k.Load(confmap.Provider(map[string]any{"servers": tt.value}, ""), nil))
+
+			slices := k.Slices("servers")
+			require.NotNil(t, slices)
+			require.Len(t, slices, len(tt.want))
+			for i, child := range slices {
+				assert.Equal(t, tt.want[i], child.Raw())
+			}
+		})
+	}
+}
+
+func TestSlicesCopyIsolation(t *testing.T) {
+	for _, native := range []bool{false, true} {
+		name := "interface_slice"
+		if native {
+			name = "native_slice"
+		}
+		t.Run(name, func(t *testing.T) {
+			// Reuse the same map to check that siblings are independent too.
+			mp := map[string]any{"nested": map[string]any{"host": "original"}}
+			var value any = []any{mp, mp}
+			if native {
+				value = []map[string]any{mp, mp}
+			}
+
+			k := koanf.New("/")
+			require.NoError(t, k.Load(confmap.Provider(map[string]any{"servers": value}, ""), nil))
+			before := k.Get("servers")
+			slices := k.Slices("servers")
+			require.Len(t, slices, 2)
+			assert.Equal(t, "/", slices[0].Delim())
+			assert.Equal(t, "original", slices[0].String("nested/host"))
+
+			require.NoError(t, slices[0].Set("nested/host", "changed"))
+			assert.Equal(t, "changed", slices[0].String("nested/host"))
+			assert.Equal(t, "original", slices[1].String("nested/host"))
+			assert.Equal(t, before, k.Get("servers"))
+		})
+	}
+}
+
 func TestGetTypes(t *testing.T) {
 	assert := assert.New(t)
 	for _, c := range cases {
