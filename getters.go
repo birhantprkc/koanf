@@ -91,6 +91,19 @@ func (ko *Koanf) Int64Map(path string) map[string]int64 {
 		return out
 	}
 
+	switch mp := o.(type) {
+	case map[string]int64:
+		for k, v := range mp {
+			out[k] = v
+		}
+		return out
+	case map[string]int:
+		for k, v := range mp {
+			out[k] = int64(v)
+		}
+		return out
+	}
+
 	mp, ok := o.(map[string]any)
 	if !ok {
 		return out
@@ -280,6 +293,14 @@ func (ko *Koanf) Float64Map(path string) map[string]float64 {
 		o   = ko.Get(path)
 	)
 	if o == nil {
+		return out
+	}
+
+	switch mp := o.(type) {
+	case map[string]float64:
+		for k, v := range mp {
+			out[k] = v
+		}
 		return out
 	}
 
@@ -615,6 +636,14 @@ func (ko *Koanf) BoolMap(path string) map[string]bool {
 		o   = ko.Get(path)
 	)
 	if o == nil {
+		return out
+	}
+
+	switch mp := o.(type) {
+	case map[string]bool:
+		for k, v := range mp {
+			out[k] = v
+		}
 		return out
 	}
 

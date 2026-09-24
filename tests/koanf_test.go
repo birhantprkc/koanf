@@ -1649,6 +1649,48 @@ func TestBoolsNativeSlice(t *testing.T) {
 	assert.Equal([]bool{true, false, true}, k.Bools("bools"))
 }
 
+func TestTypedGettersNativeMaps(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		value any
+		get   func(*koanf.Koanf, string) any
+	}{
+		{"int", map[string]int{"a": 1, "b": 2}, func(k *koanf.Koanf, path string) any { return k.IntMap(path) }},
+		{"int64", map[string]int64{"a": 1 << 54, "b": -2}, func(k *koanf.Koanf, path string) any { return k.Int64Map(path) }},
+		{"float64", map[string]float64{"a": 1.5, "b": -2.5}, func(k *koanf.Koanf, path string) any { return k.Float64Map(path) }},
+		{"bool", map[string]bool{"a": true, "b": false}, func(k *koanf.Koanf, path string) any { return k.BoolMap(path) }},
+		{"nil_int", map[string]int(nil), func(k *koanf.Koanf, path string) any { return k.IntMap(path) }},
+		{"nil_int64", map[string]int64(nil), func(k *koanf.Koanf, path string) any { return k.Int64Map(path) }},
+		{"nil_float64", map[string]float64(nil), func(k *koanf.Koanf, path string) any { return k.Float64Map(path) }},
+		{"nil_bool", map[string]bool(nil), func(k *koanf.Koanf, path string) any { return k.BoolMap(path) }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			k := koanf.New(delim)
+			require.NoError(t, k.Load(confmap.Provider(map[string]any{"value": tt.value}, ""), nil))
+			got := tt.get(k, "value")
+			require.NotNil(t, got)
+			if strings.HasPrefix(tt.name, "nil_") {
+				assert.Empty(t, got)
+				return
+			}
+			assert.Equal(t, tt.value, got)
+
+			// Changing the returned map must not change the stored configuration.
+			switch mp := got.(type) {
+			case map[string]int:
+				mp["a"] = 0
+			case map[string]int64:
+				mp["a"] = 0
+			case map[string]float64:
+				mp["a"] = 0
+			case map[string]bool:
+				mp["a"] = false
+			}
+			assert.Equal(t, tt.value, tt.get(k, "value"))
+		})
+	}
+}
+
 // waitTimeout waits for the waitgroup for the specified max timeout.
 // Returns true if waiting timed out.
 func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
